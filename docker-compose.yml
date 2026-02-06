@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # 1. API Server (Receives requests)
+  api:
+    build: ./backend
+    container_name: media_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app      # Mount code for hot reloading
+      - ./media_storage:/data # Shared storage for media files
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: always
+
+  # 2. Worker (Performs heavy tasks)
+  worker:
+    build: ./backend
+    container_name: media_worker
+    # -A celery_app points to celery_app.py
+    command: celery -A celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend:/app
+      - ./media_storage:/data
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: always
+    # To scale workers: docker-compose up --scale worker=3
+
+  # 3. Broker (Message Queue)
+  redis:
+    image: redis:alpine
+    container_name: media_redis
+    ports:
+      - "6379:6379" # Exposed for local debugging if needed
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  redis_data:
